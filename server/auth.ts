@@ -24,6 +24,10 @@ export type AuthedRequest = Request & { staff: StaffUser };
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'nile-table-dev-secret';
 
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is required in production.');
+}
+
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');

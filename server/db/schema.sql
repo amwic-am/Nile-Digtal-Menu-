@@ -1,4 +1,4 @@
--- Nile Table — restaurant operations schema (PostgreSQL / PGlite)
+-- Nile Table — restaurant operations schema (PostgreSQL / Supabase)
 
 CREATE TABLE IF NOT EXISTS restaurants (
   id serial PRIMARY KEY,

@@ -9,6 +9,12 @@ export async function seedDb() {
   const existing = await one<{ count: number }>('SELECT count(*)::int AS count FROM restaurants');
   if (existing && existing.count > 0) return;
 
+  const initialPassword = process.env.INITIAL_ADMIN_PASSWORD
+    ?? (process.env.NODE_ENV === 'production' ? undefined : 'nile123');
+  if (!initialPassword) {
+    throw new Error('INITIAL_ADMIN_PASSWORD is required to seed the production database.');
+  }
+
   const restaurant = await one<{ id: number }>(
     `INSERT INTO restaurants (name, slug, address, phone, service_charge_pct, tax_pct, auto_accept_orders, auto_open_sessions)
      VALUES ('Nile Restaurant', 'nile', 'Nile Hotel, Kazanchis, Addis Ababa', '+251 11 555 0123', 10, 0, false, true)
@@ -16,7 +22,6 @@ export async function seedDb() {
   );
   const rid = restaurant!.id;
 
-  const password = hashPassword('nile123');
   const staffSeed: Array<[string, string, string]> = [
     ['Abel Mesfin', 'admin@nilehotel.com', 'super_admin'],
     ['Selam Tesfaye', 'manager@nilehotel.com', 'manager'],
@@ -27,9 +32,12 @@ export async function seedDb() {
   ];
   const staffIds: Record<string, number> = {};
   for (const [name, email, role] of staffSeed) {
+    const password = process.env.NODE_ENV === 'production' && role !== 'super_admin'
+      ? crypto.randomBytes(32).toString('base64url')
+      : initialPassword;
     const row = await one<{ id: number }>(
       `INSERT INTO staff (restaurant_id, name, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [rid, name, email, password, role],
+      [rid, name, email, hashPassword(password), role],
     );
     staffIds[role] = row!.id;
   }

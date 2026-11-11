@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .token
 .data/
+.env*
+!.env.example
 
 # Editor directories and files
 .vscode/*

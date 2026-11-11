@@ -297,7 +297,7 @@ export function SettingsPage() {
             <div className="mt-3 space-y-2 text-[11px] text-cream-100/45">
               <div className="flex items-center justify-between"><span>API</span><span className="text-emerald-200">Online</span></div>
               <div className="flex items-center justify-between"><span>Realtime</span><span className="text-emerald-200">Socket.IO</span></div>
-              <div className="flex items-center justify-between"><span>Database</span><span>PostgreSQL · PGlite</span></div>
+              <div className="flex items-center justify-between"><span>Database</span><span>PostgreSQL · Supabase</span></div>
               <div className="flex items-center justify-between"><span>Currency</span><span>{restaurant.currency}</span></div>
               <div className="flex items-center justify-between"><span>Your role</span><span>{user ? roleLabels[user.role] : '—'}</span></div>
             </div>

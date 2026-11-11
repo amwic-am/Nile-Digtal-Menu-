@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import type { AuthedRequest } from '../auth.js';
-import { findStaffByEmail, hashPassword, requireRoles } from '../auth.js';
+import { findStaffByEmail, requireRoles } from '../auth.js';
 import { one, query } from '../db.js';
 import { emitTo } from '../realtime.js';
 import { getRestaurant, logActivity } from '../domain.js';
+import { getSupabaseAdmin } from '../supabase.js';
 
 export const miscRouter = Router();
 
@@ -228,7 +229,6 @@ miscRouter.post('/staff', requireRoles('super_admin', 'manager'), async (req, re
   const name = String(b.name ?? '').trim();
   const email = String(b.email ?? '').trim().toLowerCase();
   const role = String(b.role ?? '');
-  const password = String(b.password ?? '');
 
   if (name.length < 2 || name.length > 80) {
     res.status(400).json({ error: 'Full name must be between 2 and 80 characters' });
@@ -246,21 +246,39 @@ miscRouter.post('/staff', requireRoles('super_admin', 'manager'), async (req, re
     res.status(403).json({ error: 'Only a super admin can add another manager' });
     return;
   }
-  if (password.length < 6 || password.length > 72) {
-    res.status(400).json({ error: 'Password must be at least 6 characters' });
-    return;
-  }
   if (await findStaffByEmail(email)) {
     res.status(409).json({ error: 'A staff account with that email already exists' });
     return;
   }
 
-  const staff = await one(
-    `INSERT INTO staff (restaurant_id, name, email, password_hash, role)
-     VALUES (1, $1, $2, $3, $4)
-     RETURNING id, name, email, role, is_active AS "isActive", created_at AS "createdAt"`,
-    [name, email, hashPassword(password), role],
-  );
+  const admin = getSupabaseAdmin();
+  const { data: authData, error: authError } = await admin.auth.admin.inviteUserByEmail(email, {
+    ...(process.env.AUTH_REDIRECT_URL ? { redirectTo: process.env.AUTH_REDIRECT_URL } : {}),
+    data: { full_name: name, staff_role: role },
+  });
+  if (authError) {
+    if (authError.code === 'user_already_exists') {
+      res.status(409).json({ error: 'A Supabase Auth account with that email already exists. Link or invite that account separately.' });
+      return;
+    }
+    throw authError;
+  }
+
+  let staff;
+  try {
+    staff = await one(
+      `INSERT INTO staff (restaurant_id, name, email, role, auth_user_id)
+       VALUES (1, $1, $2, $3, $4)
+       RETURNING id, name, email, role, is_active AS "isActive", created_at AS "createdAt"`,
+      [name, email, role, authData.user.id],
+    );
+  } catch (error) {
+    const { error: deleteError } = await admin.auth.admin.deleteUser(authData.user.id);
+    if (deleteError) {
+      console.error('[nile] could not remove orphaned Supabase Auth user:', deleteError);
+    }
+    throw error;
+  }
   emitTo('staff', 'staff:updated', { staffId: staff?.id });
   res.status(201).json({ staff });
 });

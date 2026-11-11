@@ -20,11 +20,15 @@ CREATE TABLE IF NOT EXISTS staff (
   restaurant_id int NOT NULL REFERENCES restaurants(id),
   name text NOT NULL,
   email text NOT NULL UNIQUE,
-  password_hash text NOT NULL,
+  auth_user_id uuid UNIQUE,
+  password_hash text,
   role text NOT NULL CHECK (role IN ('super_admin','manager','receptionist','waiter','cashier','chef','auditor')),
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS auth_user_id uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_staff_auth_user_id ON staff(auth_user_id) WHERE auth_user_id IS NOT NULL;
+ALTER TABLE staff ALTER COLUMN password_hash DROP NOT NULL;
 
 CREATE TABLE IF NOT EXISTS dining_floors (
   id serial PRIMARY KEY,

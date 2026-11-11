@@ -4,8 +4,6 @@ import {
   ArrowLeft,
   ChefHat,
   ClipboardList,
-  Eye,
-  EyeOff,
   KeyRound,
   Mail,
   ReceiptText,
@@ -47,10 +45,7 @@ export function StaffAddPage() {
     name: '',
     email: '',
     role: 'waiter' as Exclude<Role, 'super_admin'>,
-    password: '',
-    confirm: '',
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -72,14 +67,6 @@ export function StaffAddPage() {
       setError('Enter a valid email address for sign-in.');
       return;
     }
-    if (form.password.length < 6) {
-      setError('Set a password with at least 6 characters.');
-      return;
-    }
-    if (form.password !== form.confirm) {
-      setError('The two passwords do not match.');
-      return;
-    }
     setSaving(true);
     try {
       await api('/restaurant/staff', {
@@ -88,10 +75,9 @@ export function StaffAddPage() {
           name: form.name.trim(),
           email: form.email.trim(),
           role: form.role,
-          password: form.password,
         },
       });
-      toast.success('Staff account created', `${form.name.trim()} can now sign in as ${roleLabels[form.role].toLowerCase()}.`);
+      toast.success('Invitation sent', `${form.name.trim()} was invited as ${roleLabels[form.role].toLowerCase()}.`);
       navigate('/admin/restaurant/staff');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the account');
@@ -105,7 +91,7 @@ export function StaffAddPage() {
       <PageHeader
         eyebrow="People"
         title="Add staff"
-        description="Create a sign-in for a new team member. Their role decides which parts of the restaurant they can open."
+        description="Invite a new team member by email. Their selected role decides which parts of the restaurant they can open."
         actions={
           <Link to="/admin/restaurant/staff" className={buttonClass('ghost', 'md')}>
             <ArrowLeft size={15} /> Back to team
@@ -193,45 +179,6 @@ export function StaffAddPage() {
             </div>
           </Card>
 
-          <Card className="space-y-4 p-5 sm:p-6">
-            <div>
-              <p className="eyebrow">03 · Sign-in password</p>
-              <h2 className="mt-1 font-display text-xl text-cream-50">Set a temporary password</h2>
-              <p className="mt-1 text-xs text-cream-100/45">Share it privately — they can change it after signing in.</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Password" required hint="Min. 6 characters">
-                <div className="relative">
-                  <KeyRound size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-cream-100/35" />
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={form.password}
-                    onChange={(event) => update('password', event.target.value)}
-                    placeholder="••••••••"
-                    className="pl-9 pr-10"
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((value) => !value)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-cream-100/40 transition hover:text-cream-50"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </Field>
-              <Field label="Confirm password" required>
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  value={form.confirm}
-                  onChange={(event) => update('confirm', event.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                />
-              </Field>
-            </div>
-          </Card>
         </div>
 
         <div className="space-y-5 xl:sticky xl:top-24 xl:self-start">
@@ -252,11 +199,11 @@ export function StaffAddPage() {
               </p>
               <p className="flex items-start gap-2">
                 <KeyRound size={12} className="mt-0.5 shrink-0 text-gold-300" />
-                Passwords are hashed with scrypt before they reach the database.
+                Supabase will email them a secure invitation to set their own password.
               </p>
             </div>
             <Button className="mt-4 w-full" size="lg" icon={<UserPlus size={15} />} loading={saving} onClick={submit}>
-              Create account
+              Send invitation
             </Button>
             <Link to="/admin/restaurant/staff" className={cn(buttonClass('ghost', 'md'), 'mt-2 w-full')}>
               Cancel

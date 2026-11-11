@@ -1,9 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { api, TOKEN_KEY } from './api';
+import { supabase } from './supabase';
 import type { StaffUser } from './types';
-
-const SESSION_KEY = 'nile.session';
 
 type StoredSession = { token: string; user: StaffUser };
 
@@ -17,51 +16,55 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-function readSession(): StoredSession | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredSession;
-    if (!parsed?.token || !parsed?.user) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<StoredSession | null>(readSession);
+  const [session, setSession] = useState<StoredSession | null>(null);
   const [ready, setReady] = useState(false);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(TOKEN_KEY);
     setSession(null);
+    void supabase.auth.signOut().then(({ error }) => {
+      if (error) console.error('[nile] could not sign out of Supabase Auth:', error);
+    });
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    if (!session) {
-      setReady(true);
-      return;
-    }
-    api<{ user: StaffUser }>('/auth/me')
-      .then((res) => {
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, authSession) => {
+      if (authSession) {
+        localStorage.setItem(TOKEN_KEY, authSession.access_token);
+        setSession((current) => current ? { ...current, token: authSession.access_token } : current);
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+        setSession(null);
+      }
+    });
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!data.session) return;
+
+        localStorage.setItem(TOKEN_KEY, data.session.access_token);
+        const res = await api<{ user: StaffUser }>('/auth/me');
         if (cancelled) return;
-        const next = { token: session.token, user: res.user };
-        localStorage.setItem(SESSION_KEY, JSON.stringify(next));
-        setSession(next);
-      })
-      .catch(() => {
-        if (!cancelled) logout();
-      })
-      .finally(() => {
+        setSession({ token: data.session.access_token, user: res.user });
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[nile] could not restore Supabase Auth session:', error);
+          await supabase.auth.signOut();
+        }
+      } finally {
         if (!cancelled) setReady(true);
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -71,13 +74,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await api<{ token: string; user: StaffUser }>('/auth/login', {
-      method: 'POST',
-      body: { email, password },
-    });
-    const next = { token: res.token, user: res.user };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
-    localStorage.setItem(TOKEN_KEY, res.token);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (!data.session) throw new Error('Supabase Auth did not return a session.');
+
+    localStorage.setItem(TOKEN_KEY, data.session.access_token);
+    let res: { user: StaffUser };
+    try {
+      res = await api<{ user: StaffUser }>('/auth/me');
+    } catch (error) {
+      await supabase.auth.signOut();
+      throw error;
+    }
+
+    const next = { token: data.session.access_token, user: res.user };
     setSession(next);
     setReady(true);
     return res.user;

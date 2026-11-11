@@ -68,9 +68,14 @@ async function main() {
   await seedDb();
   const server = createServer(app);
   initRealtime(server);
-  server.listen(PORT, () => {
-    console.log(`[nile] API + realtime listening on http://localhost:${PORT}`);
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(PORT, () => {
+      server.off('error', reject);
+      resolve();
+    });
   });
+  console.log(`[nile] API + realtime listening on http://localhost:${PORT}`);
 }
 
 main().catch((error) => {

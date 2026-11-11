@@ -3,18 +3,8 @@ import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ArrowRight, KeyRound, Mail, QrCode, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { roleLabels } from '../lib/format';
-import { Button, cn } from '../components/ui';
+import { Button } from '../components/ui';
 import type { Role } from '../lib/types';
-
-const quickAccounts: Array<{ email: string; label: string; role: Role }> = [
-  { email: 'manager@nilehotel.com', label: 'Manager', role: 'manager' },
-  { email: 'waiter@nilehotel.com', label: 'Waiter', role: 'waiter' },
-  { email: 'chef@nilehotel.com', label: 'Kitchen', role: 'chef' },
-  { email: 'cashier@nilehotel.com', label: 'Cashier', role: 'cashier' },
-  { email: 'reception@nilehotel.com', label: 'Reception', role: 'receptionist' },
-  { email: 'admin@nilehotel.com', label: 'Admin', role: 'super_admin' },
-];
 
 function roleHome(role: Role) {
   if (role === 'chef') return '/admin/restaurant/kitchen';
@@ -27,8 +17,8 @@ function roleHome(role: Role) {
 export function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('manager@nilehotel.com');
-  const [password, setPassword] = useState('nile123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -178,35 +168,6 @@ export function LoginPage() {
                 Sign in
               </Button>
             </form>
-
-            <div className="my-6 flex items-center gap-3">
-              <span className="h-px flex-1 bg-ink-950/[0.07]" />
-              <span className="text-[9px] uppercase tracking-[0.18em] text-cream-100/25">Demo accounts · nile123</span>
-              <span className="h-px flex-1 bg-ink-950/[0.07]" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {quickAccounts.map((account) => (
-                <button
-                  key={account.email}
-                  type="button"
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword('nile123');
-                    setError('');
-                  }}
-                  className={cn(
-                    'rounded-lg border px-2 py-2 text-[10.5px] transition',
-                    email === account.email
-                      ? 'border-gold-400/45 bg-gold-400/10 text-gold-100'
-                      : 'border-ink-950/10 bg-ink-950/[0.025] text-cream-100/50 hover:border-ink-950/20 hover:text-cream-50',
-                  )}
-                  title={`${roleLabels[account.role]} · ${account.email}`}
-                >
-                  {account.label}
-                </button>
-              ))}
-            </div>
 
             <div className="mt-7 flex items-center justify-between gap-3 rounded-xl border border-ink-950/[0.07] bg-ink-950/[0.025] px-4 py-3">
               <div>

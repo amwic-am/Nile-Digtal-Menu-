@@ -19,6 +19,8 @@ Set `INITIAL_ADMIN_EMAIL` to the intended super-admin email in the ignored envir
 
 To add staff, select a role and use **Send invitation**. The app creates an invited Supabase Auth account, sends an email through Supabase, and stores the selected role in the staff table and Auth user metadata (`staff_role`). Set `AUTH_REDIRECT_URL` to an allowed application URL. If the role should appear in the invitation email body, update Supabase Auth's invite template to include `{{ .Data.staff_role }}`. To invite existing staff missing Auth accounts, run `npm run staff:invite-auth`.
 
+Product photos can be uploaded from **Add a product**. On the first upload, the server creates a public `menu-product-images` Supabase Storage bucket restricted to PNG, JPG, and WebP files up to 6 MB. The bucket is public so customer menu images can load without staff authentication; uploads remain restricted to super-admin and manager accounts through the server.
+
 If Supabase accepts a login but the app reports that the account is not linked to staff, set `INITIAL_ADMIN_EMAIL` to the intended admin login email and `INITIAL_ADMIN_PASSWORD` to a new strong password, then run `npm run admin:update` and sign in again. The API also matches verified Auth IDs to staff rows, so a successful email match is saved for future logins. Restart the API after updating the schema or staff/Auth records.
 
 The browser uses only the Supabase publishable/anon key. Never expose `SUPABASE_SERVICE_ROLE_KEY`, database credentials, or admin passwords through a `VITE_` variable or commit them to source control. Rotate any credentials that have been shared or exposed.

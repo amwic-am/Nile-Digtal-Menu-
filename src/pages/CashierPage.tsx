@@ -56,49 +56,91 @@ type PaymentsResponse = {
 
 type TabId = 'open' | 'settled' | 'payments';
 
-function Receipt({ bill, session }: { bill: Bill; session: SessionSummary | null }) {
+function Receipt({
+  bill,
+  session,
+  cashierName,
+  printedAt,
+}: {
+  bill: Bill;
+  session: SessionSummary | null;
+  cashierName: string;
+  printedAt: string;
+}) {
+  const orderNumbers = session?.orders.map((order) => order.displayNo).join(', ') || '—';
+
   return (
-    <div className="print-area mx-auto w-full max-w-[360px] rounded-lg bg-white p-6 font-mono text-[11px] text-[#16130d]">
-      <div className="text-center">
+    <article className="print-area mx-auto w-full max-w-[360px] rounded-lg bg-white p-6 font-mono text-[11px] text-[#16130d]">
+      <header className="receipt-keep text-center">
         <p className="font-serif text-xl tracking-[0.25em]">NILE</p>
-        <p className="mt-1 text-[8px] uppercase tracking-[0.3em] text-[#8a7452]">Hotel Restaurant</p>
-        <p className="mt-2 text-[9px]">Addis Ababa · +251 11 000 0000</p>
-      </div>
-      <div className="my-4 border-t border-dashed border-[#16130d]/30" />
-      <div className="flex justify-between text-[10px]">
-        <span>Table {session?.tableCode ?? bill.tableId}</span>
-        <span>{session?.code ?? `Session ${bill.sessionId}`}</span>
-      </div>
-      <div className="flex justify-between text-[10px]">
-        <span>{session?.areaName ?? ''}</span>
-        <span>{session ? formatDateTime(session.openedAt) : formatDateTime(new Date())}</span>
-      </div>
-      <div className="my-3 border-t border-dashed border-[#16130d]/30" />
-      <table className="w-full text-[10px]">
+        <p className="mt-1 text-[8px] uppercase tracking-[0.3em] text-[#6d5b3d]">Hotel Restaurant</p>
+        <p className="mt-2 text-[9px]">Addis Ababa</p>
+        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.16em]">Guest receipt</p>
+      </header>
+      <div className="receipt-rule my-3 border-t border-dashed border-[#16130d]/30" />
+      <section className="receipt-keep space-y-1 text-[10px]">
+        <div className="flex justify-between gap-2"><span>Receipt no.</span><span>{bill.id ?? bill.sessionId}</span></div>
+        <div className="flex justify-between gap-2"><span>Order no.</span><span className="text-right">{orderNumbers}</span></div>
+        <div className="flex justify-between gap-2"><span>Table</span><span>{session?.tableCode ?? bill.tableId}</span></div>
+        <div className="flex justify-between gap-2"><span>Dining area</span><span>{session?.areaName || '—'}</span></div>
+        <div className="flex justify-between gap-2"><span>Session</span><span>{session?.code ?? `Session ${bill.sessionId}`}</span></div>
+        <div className="flex justify-between gap-2"><span>Cashier</span><span>{cashierName || '—'}</span></div>
+        <div className="flex justify-between gap-2"><span>Opened</span><span>{session ? formatDateTime(session.openedAt) : '—'}</span></div>
+        <div className="flex justify-between gap-2"><span>Printed</span><span>{formatDateTime(printedAt)}</span></div>
+      </section>
+      <div className="receipt-rule my-3 border-t border-dashed border-[#16130d]/30" />
+      <table className="receipt-items w-full table-fixed text-[10px]">
+        <thead>
+          <tr className="border-b border-[#16130d]/30 text-left">
+            <th className="w-[15%] py-1 font-bold">Qty</th>
+            <th className="w-[57%] py-1 font-bold">Item / unit</th>
+            <th className="w-[28%] py-1 text-right font-bold">Amount</th>
+          </tr>
+        </thead>
         <tbody>
-          {bill.items.map((item) => (
-            <tr key={item.name}>
-              <td className="py-0.5">{item.qty} × {item.name}</td>
-              <td className="py-0.5 text-right">{money(item.total, 'ETB').replace('ETB ', '')}</td>
+          {bill.items.map((item, index) => (
+            <tr key={`${item.name}-${index}`} className="receipt-item-row border-b border-dashed border-[#16130d]/15 align-top">
+              <td className="break-words py-1">{item.qty}</td>
+              <td className="break-words py-1 pr-1">
+                <span className="block font-bold">{item.name}</span>
+                <span className="block text-[9px]">{money(item.unitPrice, 'ETB')} each</span>
+              </td>
+              <td className="break-words py-1 text-right">{money(item.total, 'ETB').replace('ETB ', '')}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="my-3 border-t border-dashed border-[#16130d]/30" />
-      <div className="space-y-1 text-[10px]">
-        <div className="flex justify-between"><span>Subtotal</span><span>{money(bill.subtotal, 'ETB').replace('ETB ', '')}</span></div>
-        <div className="flex justify-between"><span>Service</span><span>{money(bill.serviceCharge, 'ETB').replace('ETB ', '')}</span></div>
-        {bill.tax > 0 && <div className="flex justify-between"><span>Tax</span><span>{money(bill.tax, 'ETB').replace('ETB ', '')}</span></div>}
-        <div className="mt-1 flex justify-between border-t border-[#16130d] pt-1.5 text-[12px] font-bold">
-          <span>TOTAL</span><span>{money(bill.total, 'ETB').replace('ETB ', '')}</span>
+      <div className="receipt-rule my-3 border-t border-dashed border-[#16130d]/30" />
+      <section className="receipt-keep space-y-1 text-[10px]">
+        <div className="flex justify-between gap-2"><span>Subtotal</span><span>{money(bill.subtotal, 'ETB')}</span></div>
+        <div className="flex justify-between gap-2"><span>Service charge</span><span>{money(bill.serviceCharge, 'ETB')}</span></div>
+        {bill.discount > 0 && <div className="flex justify-between gap-2"><span>Discount</span><span>-{money(bill.discount, 'ETB')}</span></div>}
+        {bill.tax > 0 && <div className="flex justify-between gap-2"><span>Tax</span><span>{money(bill.tax, 'ETB')}</span></div>}
+        <div className="mt-1 flex justify-between gap-2 border-t border-[#16130d] pt-1.5 text-[12px] font-bold">
+          <span>GRAND TOTAL</span><span>{money(bill.total, 'ETB')}</span>
         </div>
-        <div className="flex justify-between"><span>Paid</span><span>{money(bill.paid, 'ETB').replace('ETB ', '')}</span></div>
-        <div className="flex justify-between"><span>Balance</span><span>{money(Math.max(0, bill.balance), 'ETB').replace('ETB ', '')}</span></div>
-      </div>
-      <div className="my-4 border-t border-dashed border-[#16130d]/30" />
-      <p className="text-center text-[9px] leading-relaxed">Thank you for dining with Nile.<br />Scan your table QR to order again.</p>
-      <p className="mt-3 text-center text-[8px] text-[#8a7452]">{formatDateTime(new Date())}</p>
-    </div>
+        <div className="flex justify-between gap-2"><span>Amount paid</span><span>{money(bill.paid, 'ETB')}</span></div>
+        <div className="flex justify-between gap-2 font-bold"><span>Remaining balance</span><span>{money(Math.max(0, bill.balance), 'ETB')}</span></div>
+      </section>
+      <div className="receipt-rule my-3 border-t border-dashed border-[#16130d]/30" />
+      <section className="text-[10px]">
+        <p className="mb-1 font-bold">Payment transactions</p>
+        {bill.payments.length ? bill.payments.map((payment) => (
+          <div key={payment.id} className="receipt-keep mb-2 border-b border-dashed border-[#16130d]/15 pb-1">
+            <div className="flex justify-between gap-2">
+              <span className="capitalize">{payment.method.replace(/_/g, ' ')}</span>
+              <span>{money(payment.amount, 'ETB')}</span>
+            </div>
+            <div className="flex justify-between gap-2 text-[9px]">
+              <span>Transaction #{payment.id}{payment.reference ? ` · Ref ${payment.reference}` : ''}</span>
+            </div>
+            <div className="text-[9px]">{formatDateTime(payment.createdAt)}</div>
+          </div>
+        )) : <p>No payments recorded.</p>}
+      </section>
+      <div className="receipt-rule my-3 border-t border-dashed border-[#16130d]/30" />
+      <p className="receipt-keep text-center text-[9px] leading-relaxed">Thank you for dining with Nile.</p>
+    </article>
   );
 }
 
@@ -117,6 +159,7 @@ export function CashierPage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [forceOpen, setForceOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptPrintedAt, setReceiptPrintedAt] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (quiet = false) => {
@@ -414,7 +457,14 @@ export function CashierPage() {
                   >
                     Record payment
                   </Button>
-                  <Button variant="secondary" icon={<Printer size={15} />} onClick={() => setReceiptOpen(true)}>
+                  <Button
+                    variant="secondary"
+                    icon={<Printer size={15} />}
+                    onClick={() => {
+                      setReceiptPrintedAt(new Date().toISOString());
+                      setReceiptOpen(true);
+                    }}
+                  >
                     Receipt
                   </Button>
                   {settled ? (
@@ -504,6 +554,8 @@ export function CashierPage() {
         title="Guest receipt"
         subtitle="Print or save as PDF from the browser dialog."
         size="sm"
+        overlayClassName="guest-receipt-overlay"
+        className="guest-receipt-modal"
         footer={
           <>
             <Button variant="ghost" onClick={() => setReceiptOpen(false)}>Close</Button>
@@ -511,7 +563,9 @@ export function CashierPage() {
           </>
         }
       >
-        {detail && <Receipt bill={detail.bill} session={detail.session} />}
+        {detail && receiptPrintedAt && (
+          <Receipt bill={detail.bill} session={detail.session} cashierName={user?.name ?? ''} printedAt={receiptPrintedAt} />
+        )}
       </Modal>
     </div>
   );

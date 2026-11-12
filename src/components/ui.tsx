@@ -226,6 +226,7 @@ export function Modal({
   footer,
   size = 'md',
   className,
+  overlayClassName,
 }: {
   open: boolean;
   onClose: () => void;
@@ -235,6 +236,7 @@ export function Modal({
   footer?: ReactNode;
   size?: keyof typeof modalSizes;
   className?: string;
+  overlayClassName?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -252,7 +254,7 @@ export function Modal({
 
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[130] flex items-end justify-center sm:items-center sm:p-6">
+    <div className={cn('fixed inset-0 z-[130] flex items-end justify-center sm:items-center sm:p-6', overlayClassName)}>
       <div className="absolute inset-0 animate-fade-in bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div
         role="dialog"

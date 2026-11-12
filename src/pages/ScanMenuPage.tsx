@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -71,8 +71,19 @@ const copy = {
     noOrders: 'No orders yet',
     orderPlaced: 'Order placed',
     orderPlacedHint: 'The kitchen has your ticket. We will bring it to your table.',
+    choosePaymentMethod: 'Choose Payment Method',
+    paymentSummary: 'Order summary',
+    payAtCounter: 'Pay at the cashier',
+    pendingPayment: 'Pending payment confirmation',
+    paymentPendingHint: 'Your order is confirmed, but payment still needs to be verified before final completion.',
+    confirmSelection: 'Confirm selection',
+    selected: 'Selected',
     trackOrder: 'Track this order',
     orderMore: 'Order more',
+    swipeToPlace: 'Swipe to Place Order',
+    swipeHint: 'Slide the handle to confirm your order',
+    continueToOrder: 'Continue to current order',
+    paymentNotice: 'Selecting a method does not record payment. A cashier or supported provider must confirm it.',
     guests: 'guests at this table',
     tableClosed: 'This table is not taking orders',
     joinedAs: 'Ordering as',
@@ -132,8 +143,19 @@ const copy = {
     noOrders: 'እስካሁን ትእዛዝ የለም',
     orderPlaced: 'ትእዛዝ ተሰጥቷል',
     orderPlacedHint: 'ኩሽናው ትእዛዝህን ተቀብሏል። ወደ ጠረጴዛህ እናመጣዋለን።',
+    choosePaymentMethod: 'የክፍያ ዘዴ ይምረጡ',
+    paymentSummary: 'የትእዛዝ አጠቃላይ',
+    payAtCounter: 'በካሽየር ክፍያ ይከፈላል',
+    pendingPayment: 'ክፍያ በመጠባበቅ ላይ',
+    paymentPendingHint: 'ትእዛዝህ ተረጋግጧል፣ ነገሩ ግን በክፍያ ማረጋገጥ እስኪያጠናቅቅ እስከ መጨረሻ የሚቀጥል ነው።',
+    confirmSelection: 'ምርጫ አረጋግጥ',
+    selected: 'ተመርጧል',
     trackOrder: 'ትእዛዝን ተከታተል',
     orderMore: 'ተጨማሪ አዘዝ',
+    swipeToPlace: 'ወደ ትእዛዝ ማድረግ',
+    swipeHint: 'መሽከርከር ለማረጋገጥ',
+    continueToOrder: 'ወደ አሁኑ ትእዛዝ ቀጥል',
+    paymentNotice: 'ዘዴ መምረጥ ክፍያን አያረጋግጥም። ካሽየር ወይም የተደገፈ አቅራቢ ማረጋገጥ አለበት።',
     guests: 'እንግዶች በዚህ ጠረጴዛ',
     tableClosed: 'ይህ ጠረጴዛ ትእዛዝ አይቀበልም',
     joinedAs: 'በስም እያዘዝክ',
@@ -171,6 +193,26 @@ type CartLine = {
   addonNames: string[];
   notes: string;
 };
+
+type PaymentChoice = 'cash' | 'bank_abyssinia' | 'cbe' | 'telebirr';
+
+const paymentChoices: Array<{ id: PaymentChoice; name: string; hint: string }> = [
+  { id: 'cash', name: 'Cash', hint: 'Pay at the cashier when you finish your meal.' },
+  { id: 'bank_abyssinia', name: 'Bank of Abyssinia', hint: 'Ask the cashier for Bank of Abyssinia transfer details.' },
+  { id: 'cbe', name: 'CBE', hint: 'Ask the cashier for Commercial Bank of Ethiopia payment details.' },
+  { id: 'telebirr', name: 'Telebirr', hint: 'Use Telebirr and confirm payment with the cashier.' },
+];
+
+function PaymentMethodLogo({ method }: { method: PaymentChoice }) {
+  const logos: Record<PaymentChoice, { src: string; alt: string }> = {
+    cash: { src: '/payment-logos/cash.png', alt: 'Cash' },
+    bank_abyssinia: { src: '/payment-logos/bank-of-abyssinia.jpg', alt: 'Bank of Abyssinia' },
+    cbe: { src: '/payment-logos/cbe.png', alt: 'Commercial Bank of Ethiopia' },
+    telebirr: { src: '/payment-logos/telebirr.png', alt: 'Telebirr' },
+  };
+  const logo = logos[method];
+  return <img src={logo.src} alt={logo.alt} className="h-11 w-11 rounded-xl object-contain" />;
+}
 
 const readGuestKey = () => {
   const existing = localStorage.getItem('nile.guestKey');
@@ -398,6 +440,126 @@ function ItemSheet({
   );
 }
 
+function SwipeToPlaceOrder({
+  disabled,
+  loading,
+  label,
+  onConfirm,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  label: string;
+  onConfirm: () => void;
+}) {
+  const [progress, setProgress] = useState(0);
+  const progressRef = useRef(0);
+  const grabOffsetRef = useRef(0);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+
+  const updateProgress = (clientX: number) => {
+    const track = trackRef.current;
+    if (!track || disabled) return;
+    const rect = track.getBoundingClientRect();
+    const handleWidth = 48;
+    const inset = 4;
+    const travel = Math.max(1, rect.width - handleWidth - inset * 2);
+    const next = Math.min(1, Math.max(0, (clientX - rect.left - grabOffsetRef.current - inset) / travel));
+    progressRef.current = next;
+    setProgress(next);
+  };
+
+  const release = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (progressRef.current > 0.74) {
+      progressRef.current = 1;
+      setProgress(1);
+      onConfirm();
+      window.setTimeout(() => {
+        progressRef.current = 0;
+        setProgress(0);
+      }, 450);
+      return;
+    }
+    progressRef.current = 0;
+    setProgress(0);
+  };
+
+  return (
+    <div className={`relative overflow-hidden rounded-full border p-[2px] shadow-[0_18px_50px_-30px_rgba(22,101,52,0.45)] transition-colors duration-200 ${
+      loading
+        ? 'border-emerald-300 bg-emerald-500'
+        : 'border-[#d7b46c]/45 bg-[linear-gradient(135deg,#d7b46c_0%,#bf8e3b_45%,#a66e27_100%)]'
+    }`}>
+      <div
+        ref={trackRef}
+        className={`relative h-14 overflow-hidden rounded-full transition-colors duration-200 ${
+          loading ? 'bg-emerald-600' : 'bg-[linear-gradient(135deg,rgba(184,143,69,0.9),rgba(140,104,45,0.95))]'
+        }`}
+      >
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-[9px] font-semibold uppercase tracking-[0.12em] text-[#f8f2e5]/90 sm:px-16 sm:text-[11px] sm:tracking-[0.2em]">
+          {loading ? 'Sending order…' : label}
+        </div>
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-[linear-gradient(135deg,rgba(247,225,174,0.38),rgba(240,205,124,0.12))] transition-[width] duration-100"
+          style={{ width: `${Math.max(0, progress * 100)}%` }}
+        />
+        <button
+          type="button"
+          disabled={disabled || loading}
+          onPointerDown={(event) => {
+            if (disabled || loading) return;
+            event.preventDefault();
+            const handleRect = event.currentTarget.getBoundingClientRect();
+            grabOffsetRef.current = event.clientX - handleRect.left;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            updateProgress(event.clientX);
+          }}
+          onPointerMove={(event) => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId) || disabled || loading) return;
+            updateProgress(event.clientX);
+          }}
+          onPointerUp={release}
+          onPointerCancel={(event) => {
+            progressRef.current = 0;
+            setProgress(0);
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              const next = Math.min(1, progressRef.current + 0.15);
+              progressRef.current = next;
+              setProgress(next);
+            }
+            if (event.key === 'Enter' && progressRef.current >= 0.75) onConfirm();
+          }}
+          className={`absolute left-1 top-1 h-12 w-12 touch-none select-none rounded-full border shadow-[0_8px_18px_rgba(25,18,10,0.2)] transition-[left,background-color,border-color] duration-150 active:scale-[0.98] ${
+            loading
+              ? 'border-emerald-100 bg-emerald-50'
+              : 'border-[#f7f0dc]/70 bg-[linear-gradient(135deg,#fffaf3,#f5e8c7)]'
+          }`}
+          style={{
+            left: `calc(4px + ${progress * 100}% - ${progress * 56}px)`,
+          }}
+          aria-label={label}
+          aria-valuenow={Math.round(progress * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <span className="flex h-full w-full items-center justify-center text-[#1f160d]">
+            <ArrowRight size={18} />
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ScanMenuPage() {
   const { token = '' } = useParams();
   const toast = useToast();
@@ -418,7 +580,20 @@ export function ScanMenuPage() {
   const [orderNotes, setOrderNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [placingStep, setPlacingStep] = useState('');
-  const [lastOrder, setLastOrder] = useState<{ id: number; orderNo: number; displayNo: string; total: number; status: OrderStatus; sessionId: number } | null>(null);
+  const [lastOrder, setLastOrder] = useState<{
+    id: number;
+    orderNo: number;
+    displayNo: string;
+    total: number;
+    subtotal: number;
+    serviceCharge: number;
+    tax: number;
+    items: Array<{ name: string; qty: number; total: number }>;
+    status: OrderStatus;
+    sessionId: number;
+  } | null>(null);
+  const [showPaymentFlow, setShowPaymentFlow] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentChoice | null>(null);
   const [callBusy, setCallBusy] = useState('');
   const [callMessage, setCallMessage] = useState('');
   const guestKey = useRef<string>('');
@@ -548,7 +723,16 @@ export function ScanMenuPage() {
       setCart([]);
       setOrderNotes('');
       setCartOpen(false);
-      setLastOrder({ ...res.order, sessionId });
+      setLastOrder({
+        ...res.order,
+        sessionId,
+        subtotal: cartSubtotal,
+        serviceCharge: serviceFee,
+        tax: taxFee,
+        items: cart.map((line) => ({ name: line.name, qty: line.qty, total: line.unitPrice * line.qty })),
+      });
+      setSelectedPayment(null);
+      setShowPaymentFlow(true);
       setPlacingStep('');
       await refreshSummary(sessionId);
     } catch (err) {
@@ -947,21 +1131,12 @@ export function ScanMenuPage() {
                 <span className="font-display text-xl">{money(cartTotal)}</span>
               </div>
             </div>
-            <button
-              type="button"
+            <SwipeToPlaceOrder
               disabled={submitting || !canOrder}
-              onClick={placeOrder}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#b98f45] text-sm font-semibold tracking-[0.02em] text-[#14100a] shadow-[0_16px_36px_-22px_rgba(166,127,56,0.9)] transition hover:bg-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {submitting ? (
-                <>
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#14100a]/25 border-t-[#14100a]" />
-                  {placingStep === 'opening' ? L.joinedAs : L.placing}
-                </>
-              ) : (
-                <> {L.placeOrder} <ArrowRight size={15} /></>
-              )}
-            </button>
+              loading={submitting}
+              label={submitting ? (placingStep === 'opening' ? L.joinedAs : L.swipeToPlace) : L.swipeToPlace}
+              onConfirm={placeOrder}
+            />
             {!canOrder && <p className="text-center text-[10.5px] text-[#9a4f1f]">{scan.notice ?? L.tableClosed}</p>}
           </div>
         }
@@ -1046,6 +1221,100 @@ export function ScanMenuPage() {
           </div>
         )}
       </GuestSheet>
+
+      {lastOrder && showPaymentFlow && (
+        <div className="fixed inset-0 z-[150] flex items-end justify-center bg-[#17120a]/55 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-[#d7b46c]/30 bg-[#fffdf9] p-4 text-[#18130b] shadow-[0_30px_80px_-30px_rgba(18,13,8,0.7)] sm:rounded-[28px] sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.24em] text-[#8a7452]">Nile</p>
+                <h2 className="mt-1 font-display text-xl sm:text-2xl">{L.choosePaymentMethod}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPaymentFlow(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#18130b]/10 text-[#6d5b3d]"
+                aria-label="Close payment selector"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-[#d7b46c]/25 bg-[#f6efd8] p-3">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-[#6d5b3d]">
+                <span>{L.paymentSummary}</span>
+                <span className="font-medium text-[#18130b]">{lastOrder.displayNo} · {table.code}</span>
+              </div>
+              <div className="mt-2 max-h-24 space-y-1 overflow-y-auto border-b border-[#d7b46c]/20 pb-2 text-[11px]">
+                {lastOrder.items.map((item, index) => (
+                  <div key={`${item.name}-${index}`} className="flex justify-between gap-3">
+                    <span className="min-w-0 truncate text-[#6d5b3d]">{item.qty} × {item.name}</span>
+                    <span className="shrink-0">{money(item.total)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 space-y-1 text-[10px] text-[#6d5b3d]">
+                <div className="flex justify-between"><span>{L.subtotal}</span><span>{money(lastOrder.subtotal)}</span></div>
+                <div className="flex justify-between"><span>{L.service}</span><span>{money(lastOrder.serviceCharge)}</span></div>
+                {lastOrder.tax > 0 && <div className="flex justify-between"><span>{L.tax}</span><span>{money(lastOrder.tax)}</span></div>}
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-[#8a7452]">Total</span>
+                <span className="font-display text-xl sm:text-2xl">{money(lastOrder.total)}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {paymentChoices.map((method) => {
+                const active = selectedPayment === method.id;
+                return (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => setSelectedPayment(method.id)}
+                    aria-pressed={active}
+                    className={`relative flex min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-xl border p-2 text-center transition sm:min-h-28 sm:rounded-2xl sm:p-3 ${
+                      active ? 'border-[#a67f38] bg-[#f8f0dc] shadow-[0_10px_20px_-18px_rgba(166,127,56,0.9)]' : 'border-[#18130b]/10 bg-white hover:border-[#18130b]/20'
+                    }`}
+                  >
+                    <PaymentMethodLogo method={method.id} />
+                    <span className="max-w-full text-[10px] font-medium leading-tight sm:text-[11px]">{method.name}</span>
+                    {active && (
+                      <span className="absolute right-1.5 top-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#18130b] text-[#fffdf9]">
+                        <CheckCircle2 size={11} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedPayment && (
+              <p className="mt-2 rounded-xl bg-[#f6efd8] px-3 py-2 text-[10px] leading-relaxed text-[#6d5b3d]">
+                {paymentChoices.find((method) => method.id === selectedPayment)?.hint}
+              </p>
+            )}
+            <p className="mt-2 text-[9.5px] leading-relaxed text-[#8a7452]">{L.paymentNotice}</p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPaymentFlow(false)}
+                className="rounded-full border border-[#18130b]/12 bg-white px-4 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#5d4c34] sm:text-[11px] sm:tracking-[0.18em]"
+              >
+                {L.close}
+              </button>
+              <Link
+                to={`/menu/scan/${token}/track/${lastOrder.orderNo}`}
+                onClick={() => setShowPaymentFlow(false)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#18130b] px-4 py-2.5 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-[#f8f2e5] sm:text-[11px] sm:tracking-[0.18em]"
+              >
+                {L.continueToOrder} <ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       <GuestSheet
         open={tableOpen}
@@ -1151,7 +1420,7 @@ export function ScanMenuPage() {
       />
 
       <GuestSheet
-        open={Boolean(lastOrder)}
+        open={Boolean(lastOrder) && !showPaymentFlow}
         onClose={() => setLastOrder(null)}
         title={L.orderPlaced}
         subtitle={lastOrder ? `${lastOrder.displayNo} · ${table.code}` : undefined}

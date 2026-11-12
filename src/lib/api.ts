@@ -153,7 +153,8 @@ export async function api<T>(
 
   if (
     options.body !== undefined &&
-    !(options.body instanceof FormData)
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof Blob)
   ) {
     headers.set('Content-Type', 'application/json');
   }
@@ -173,6 +174,7 @@ export async function api<T>(
         options.body === undefined
           ? undefined
           : options.body instanceof FormData ||
+              options.body instanceof Blob ||
               typeof options.body === 'string'
             ? (options.body as BodyInit)
             : JSON.stringify(options.body),

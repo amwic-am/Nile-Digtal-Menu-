@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -7,9 +7,10 @@ import {
   Flame,
   ImageIcon,
   ImageOff,
-  Link2,
   Save,
   Sparkles,
+  Upload,
+  X,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { money } from '../lib/format';
@@ -44,7 +45,10 @@ type Category = { id: number; name: string; items: unknown[] };
 export function ProductAddPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const [uploadedImagePreview, setUploadedImagePreview] = useState('');
   const [form, setForm] = useState({
     name: '',
     nameAm: '',
@@ -53,7 +57,6 @@ export function ProductAddPage() {
     description: '',
     tags: '',
     image: presets[0].src,
-    customImage: '',
     prepMinutes: '15',
     spiceLevel: '0',
     isSignature: false,
@@ -62,6 +65,12 @@ export function ProductAddPage() {
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (uploadedImagePreview) URL.revokeObjectURL(uploadedImagePreview);
+    };
+  }, [uploadedImagePreview]);
 
   useEffect(() => {
     api<{ categories: Category[] }>('/restaurant/menu')
@@ -75,7 +84,7 @@ export function ProductAddPage() {
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
 
-  const image = form.customImage.trim() || form.image;
+  const image = uploadedImagePreview || form.image;
   const priceNumber = Number(form.price);
   const categoryName = useMemo(
     () => categories.find((c) => String(c.id) === form.categoryId)?.name ?? 'Menu',
@@ -97,11 +106,20 @@ export function ProductAddPage() {
       return;
     }
     if (!image) {
-      setError('Pick a photo preset or paste an image URL.');
+      setError('Choose a photo preset or upload an image.');
       return;
     }
     setSaving(true);
     try {
+      let imageUrl = image;
+      if (uploadedImage) {
+        const uploaded = await api<{ image: string }>('/restaurant/menu/upload-image', {
+          method: 'POST',
+          headers: { 'Content-Type': uploadedImage.type },
+          body: uploadedImage,
+        });
+        imageUrl = uploaded.image;
+      }
       await api('/restaurant/menu/items', {
         method: 'POST',
         body: {
@@ -111,7 +129,7 @@ export function ProductAddPage() {
           price: priceNumber,
           description: form.description.trim(),
           tags: form.tags.trim(),
-          image,
+          image: imageUrl,
           prepMinutes: Number(form.prepMinutes || 15),
           spiceLevel: Number(form.spiceLevel),
           isSignature: form.isSignature,
@@ -258,7 +276,7 @@ export function ProductAddPage() {
             <div>
               <p className="eyebrow">03 · Photography</p>
               <h2 className="mt-1 font-display text-xl text-cream-50">Choose a photo</h2>
-              <p className="mt-1 text-xs text-cream-100/45">Pick one of the house presets, or paste a link to your own photo.</p>
+              <p className="mt-1 text-xs text-cream-100/45">Pick a house preset or upload a photo from your device.</p>
             </div>
             <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-4">
               {presets.map((preset) => (
@@ -267,18 +285,19 @@ export function ProductAddPage() {
                   type="button"
                   onClick={() => {
                     update('image', preset.src);
-                    update('customImage', '');
+                    setUploadedImage(null);
+                    setUploadedImagePreview('');
                   }}
                   className={cn(
                     'group relative aspect-square overflow-hidden rounded-xl border-2 transition',
-                    form.image === preset.src && !form.customImage
+                    form.image === preset.src && !uploadedImage
                       ? 'border-gold-400 ring-2 ring-gold-400/25'
                       : 'border-transparent hover:border-gold-400/40',
                   )}
                   title={preset.label}
                 >
                   <img src={preset.src} alt={preset.label} className="h-full w-full object-cover" />
-                  {form.image === preset.src && !form.customImage && (
+                  {form.image === preset.src && !uploadedImage && (
                     <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold-400 text-night">
                       <Check size={11} />
                     </span>
@@ -286,32 +305,63 @@ export function ProductAddPage() {
                 </button>
               ))}
             </div>
-            <Field label="Or paste an image URL" hint="https://…">
-              <div className="relative">
-                <Link2 size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-cream-100/35" />
-                <Input
-                  value={form.customImage}
-                  onChange={(event) => update('customImage', event.target.value)}
-                  placeholder="https://images.example.com/tibs.jpg"
-                  className="pl-9"
-                />
+            <Field label="Upload your own photo" hint="PNG, JPG or WebP · maximum 6 MB">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (!file) return;
+                  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                    setError('Choose a PNG, JPG or WebP image.');
+                    event.currentTarget.value = '';
+                    return;
+                  }
+                  if (file.size > 6 * 1024 * 1024) {
+                    setError('Image must be 6 MB or smaller.');
+                    event.currentTarget.value = '';
+                    return;
+                  }
+                  setError('');
+                  setUploadedImage(file);
+                  setUploadedImagePreview(URL.createObjectURL(file));
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={<Upload size={14} />}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploadedImage ? 'Choose another image' : 'Upload image'}
+                </Button>
+                {uploadedImage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadedImage(null);
+                      setUploadedImagePreview('');
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-cream-100/55 hover:text-cream-50"
+                  >
+                    <X size={13} /> Remove upload
+                  </button>
+                )}
               </div>
+              {uploadedImage && (
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-ink-950/[0.07] bg-ink-950/[0.02] p-3">
+                  <img src={uploadedImagePreview} alt="Uploaded dish preview" className="h-14 w-14 rounded-lg object-cover" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-medium text-cream-50">{uploadedImage.name}</p>
+                    <p className="mt-0.5 text-[10px] text-cream-100/40">{(uploadedImage.size / (1024 * 1024)).toFixed(2)} MB</p>
+                  </div>
+                </div>
+              )}
             </Field>
-            {form.customImage.trim() && (
-              <div className="flex items-center gap-3 rounded-xl border border-ink-950/[0.07] bg-ink-950/[0.02] p-3">
-                <img
-                  src={form.customImage}
-                  alt="Custom dish"
-                  className="h-14 w-14 rounded-lg object-cover"
-                  onError={(event) => {
-                    (event.target as HTMLImageElement).style.visibility = 'hidden';
-                  }}
-                />
-                <p className="text-[11px] leading-relaxed text-cream-100/45">
-                  Custom photo selected. If it fails to load, guests will see a placeholder — double-check the link.
-                </p>
-              </div>
-            )}
           </Card>
         </div>
 

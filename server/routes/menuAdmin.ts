@@ -1,9 +1,74 @@
+import crypto from 'node:crypto';
+import express from 'express';
 import { Router } from 'express';
 import { requireRoles } from '../auth.js';
 import { one, query } from '../db.js';
 import { emitTo } from '../realtime.js';
+import { getSupabaseAdmin } from '../supabase.js';
 
 export const menuAdminRouter = Router();
+const productImagesBucket = 'menu-product-images';
+const productImageTypes = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+function isSupportedImage(buffer: Buffer, contentType: string) {
+  if (contentType === 'image/jpeg') {
+    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (contentType === 'image/png') {
+    return buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
+  if (contentType === 'image/webp') {
+    return buffer.length >= 12
+      && buffer.toString('ascii', 0, 4) === 'RIFF'
+      && buffer.toString('ascii', 8, 12) === 'WEBP';
+  }
+  return false;
+}
+
+menuAdminRouter.post(
+  '/menu/upload-image',
+  requireRoles('super_admin', 'manager'),
+  express.raw({ type: [...productImageTypes], limit: '6mb' }),
+  async (req, res) => {
+    const contentType = req.get('content-type')?.split(';')[0].trim().toLowerCase() ?? '';
+    const image = req.body;
+    if (!Buffer.isBuffer(image) || image.length === 0 || !isSupportedImage(image, contentType)) {
+      res.status(400).json({ error: 'Upload a valid PNG, JPG or WebP image.' });
+      return;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    if (listError) throw listError;
+
+    const bucket = buckets.find((candidate) => candidate.name === productImagesBucket);
+    if (!bucket) {
+      const { error } = await supabase.storage.createBucket(productImagesBucket, {
+        public: true,
+        fileSizeLimit: '6MB',
+        allowedMimeTypes: [...productImageTypes],
+      });
+      if (error) throw error;
+    } else if (!bucket.public) {
+      const { error } = await supabase.storage.updateBucket(productImagesBucket, {
+        public: true,
+        fileSizeLimit: '6MB',
+        allowedMimeTypes: [...productImageTypes],
+      });
+      if (error) throw error;
+    }
+
+    const extension = contentType === 'image/jpeg' ? 'jpg' : contentType.slice('image/'.length);
+    const objectPath = `${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from(productImagesBucket)
+      .upload(objectPath, image, { contentType, cacheControl: '31536000' });
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from(productImagesBucket).getPublicUrl(objectPath);
+    res.status(201).json({ image: data.publicUrl });
+  },
+);
 
 menuAdminRouter.get('/menu', async (_req, res) => {
   const [categories, stats] = await Promise.all([
